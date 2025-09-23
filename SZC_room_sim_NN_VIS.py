@@ -14,7 +14,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.linalg import toeplitz
 
 
-
+#hej
 
 fs, lyd_data = wavfile.read(r"C:\Users\marst\OneDrive\Skrivebord\UNI\S. 7\PROJEKT\Signe_sang.wav")
 
