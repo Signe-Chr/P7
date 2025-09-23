@@ -12,11 +12,17 @@ from scipy.linalg import eig
 from scipy.signal import convolve
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.linalg import toeplitz
+import os
+from scipy.io import wavfile
 
 
 
 
-fs, lyd_data = wavfile.read(r"C:\Users\marst\OneDrive\Skrivebord\UNI\S. 7\PROJEKT\Signe_sang.wav")
+
+# Get the directory where the script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(script_dir, "Signe_sang.wav")
+fs, lyd_data = wavfile.read(file_path)
 
 lyd_data=list(np.array(lyd_data[0:fs*1])/max(lyd_data))
 
@@ -423,9 +429,13 @@ for epoch in range(num_epochs):
     scheduler.step()  # Update learning rate
     print(f"Epoch {epoch}, LR: {scheduler.get_last_lr()[0]}, Contrast Loss: {loss.item()}")
 
-q = model(x)
-torch.save(model.state_dict(), r'C:\Users\marst\OneDrive\Skrivebord\UNI\S. 7\PROJEKT\SZC_model.pth')
+# Get the script directory and save in the same folder
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, "SZC_model.pth")
 
+q = model(x)
+torch.save(model.state_dict(), model_path)
+print(f"Model saved successfully to: {model_path}")
 
 # After training, visualize the result (use fine grid)
 pressure_field_2d(room_dim, sources, q_opt.detach().cpu().numpy(), lyd_data, grid_res=50, z_plane=1.5, J=J, fs=fs)

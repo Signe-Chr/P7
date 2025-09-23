@@ -12,11 +12,14 @@ from scipy.linalg import eig
 from scipy.signal import convolve
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.linalg import toeplitz
+import os
+from scipy.io import wavfile
 
+# Get the directory where the script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(script_dir, "Signe_sang.wav")
+fs, lyd_data = wavfile.read(file_path)
 
-#hejjj
-
-fs, lyd_data = wavfile.read(r"C:\Users\marst\OneDrive\Skrivebord\UNI\S. 7\PROJEKT\Signe_sang.wav")
 
 lyd_data=list(np.array(lyd_data[0:fs*1])/max(lyd_data))
 
@@ -242,9 +245,13 @@ J = 512  # filter length
 model = ILZ_CNN(n_mics, n_srcs, len(IR[0][0]), J)
 
 try:
-    model.load_state_dict(torch.load(r'C:\Users\marst\OneDrive\Skrivebord\UNI\S. 7\PROJEKT\SZC_model.pth'))
+    model_path = os.path.join(script_dir, "SZC_model.pth")
+    model.load_state_dict(torch.load(model_path))
+    print("Model loaded successfully!")
 except FileNotFoundError:
-    print("Model file not found. Proceeding without loading.")
+    print("Model file 'SZC_model.pth' not found in the script directory. Proceeding without loading.")
+except Exception as e:
+    print(f"Error loading model: {e}. Proceeding without loading.")
 
 x = torch.randn(1, 1, n_mics, n_srcs)   # shape: (batch, channels, M, S)
 q_opt = model(x)
