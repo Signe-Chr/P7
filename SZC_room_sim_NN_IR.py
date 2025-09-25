@@ -1,19 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pyroomacoustics as pra
-from scipy.signal import chirp, fftconvolve
-from scipy.fft import rfft, rfftfreq
+from scipy.signal import fftconvolve
 from scipy.io import wavfile
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
 from scipy.signal import lfilter
-from scipy.linalg import eigh
-from scipy.linalg import eig
-from scipy.signal import convolve
-from mpl_toolkits.mplot3d import Axes3D
-from scipy.linalg import toeplitz
 import os
-from scipy.io import wavfile
 
 
 
