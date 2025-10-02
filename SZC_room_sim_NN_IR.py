@@ -88,11 +88,14 @@ for x in np.linspace(3.5, 5.5, 6):  # 6 microphones along x-axis
 mic_positions = np.array(mic_positions).T
 
 # Define which microphones are in bright and dark zones
-bright_zone_mics = list(range(0, 24))  # First 24 mics (6x4 grid in bright zone)
+bright_zone_mics = list(range(0, 24))
+  # First 24 mics (6x4 grid in bright zone)
 dark_zone_mics = list(range(24, 48))   # Next 24 mics (6x4 grid in dark zone)
 #center_line_mics = list(range(48, 60)) # Last 12 mics (center line)
 
 from mpl_toolkits.mplot3d import Axes3D
+
+
 
 def visualize_placement(room_dim, sources, mic_positions, bright_zone_mics, dark_zone_mics=None, center_line_mics=None):
     """
@@ -199,9 +202,11 @@ def visualize_placement(room_dim, sources, mic_positions, bright_zone_mics, dark
     if center_line_mics is not None:
         print(f"Center line microphones: {len(center_line_mics)}")
 
+room.add_microphone_array(pra.MicrophoneArray(mic_positions, room.fs))
+
+
 visualize_placement(room_dim, sources, mic_positions, bright_zone_mics, dark_zone_mics)
 
-room.add_microphone_array(pra.MicrophoneArray(mic_positions, room.fs))
 
 # ----------------------
 # Compute RIRs
@@ -216,11 +221,7 @@ IR = room.rir
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.fft
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 J = 512
 
@@ -258,7 +259,7 @@ class ILZ_CNN_RIR(nn.Module):
 
         # 3D convolutions to process time dimension
         # Use smaller kernels and no stride to preserve information
-        self.conv1 = nn.Conv3d(1, 16, kernel_size=(1, 1, 16), padding=(0, 0, 8))
+        self.conv1 = nn.Conv3d(1, 16, kernel_size=(1, 1, 16), padding=(0, 0, 8)) 
         self.conv2 = nn.Conv3d(16, 32, kernel_size=(1, 1, 8), padding=(0, 0, 4))
         self.conv3 = nn.Conv3d(32, 64, kernel_size=(1, 1, 4), padding=(0, 0, 2))
         
