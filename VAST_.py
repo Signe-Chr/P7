@@ -303,13 +303,13 @@ def pressure_field_from_q(q_matrix, IR, test_signal, sources, room_dim, fs_targe
             
     return X, Y, pressure_field
 
-print("Computing pressure field (coarse grid for speed)...")
+#print("Computing pressure field (coarse grid for speed)...")
 # Use a short segment of the signal for visualization to speed up convolution
 test_signal = wav[:fs_target//4] if len(wav) >= fs_target//4 else wav
 tstart = time.perf_counter()
 # Note: we pass the sources list and fs_target to the function for direct path calculation
 Xg, Yg, P = pressure_field_from_q(q_matrix, IR, test_signal, sources, room_dim, fs_target, grid_res=grid_res, z_plane=z_plane)
-print("Pressure computed in {:.2f}s".format(time.perf_counter() - tstart))
+#print("Pressure computed in {:.2f}s".format(time.perf_counter() - tstart))
 
 # Compute averages for bright/dark masks
 bright_mask = Xg < (room_dim[0]/2)
