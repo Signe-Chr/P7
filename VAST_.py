@@ -9,7 +9,7 @@ from scipy.linalg import eig
 import os
 
 # -------------------------
-# Parameters (tune these)
+# Parameters 
 # -------------------------
 wav_path = "Signe_sang.wav"   # change if needed
 fs_target = 16000             # sampling rate used for room simulation
@@ -20,6 +20,9 @@ z_plane = 1.5                 # height to visualize SPL
 reg_eps = 1e-6                # regularization for R_D (for numerical stability)
 V = 4
 mu = 0.5
+room_dim = [6.0, 3.0, 3.5]
+absorption = 0.2
+max_order = 10
 # -------------------------
 
 # -------------- Load signal --------------
@@ -39,74 +42,158 @@ wav = wav / (np.max(np.abs(wav)) + 1e-12)
 x = wav[:N].copy() if len(wav) >= N else np.pad(wav, (0, max(0, N-len(wav))), mode='constant')
 
 # -------------- Build room and geometry --------------
-room_dim = [6.0, 3.0, 3.5]
-absorption = 0.2
-max_order = 10
 
-room = pra.ShoeBox(
-    room_dim,
-    fs=fs_target,
-    materials=pra.Material(absorption),
-    max_order=max_order,
-)
 
-# speaker positions (L sources along x=0 plane)
-sources = [
-    [0.5, 0.0, 1.5], [1.0, 0.0, 1.5], [1.5, 0.0, 1.5], [2.0, 0.0, 1.5], [2.5, 0.0, 1.5],
-    [3.0, 0.0, 1.5], [3.5, 0.0, 1.5], [4.0, 0.0, 1.5], [4.5, 0.0, 1.5], [5.0, 0.0, 1.5],
-    [5.5, 0.0, 1.5],
-]
+def setup_acoustic_scenario(sources, 
+                            mic_positions_list, 
+                            bright_zone_mics_index, 
+                            dark_zone_mics_index, 
+                            fs_target=16000):
+    """
+    Sets up a pyroomacoustics simulation environment (ShoeBox) with 
+    custom source, microphone positions, and per-microphone directivity.
+    
+    Microphones specified in cardioid_mics_indices receive a cardioid pattern
+    with a custom orientation; all others are omnidirectional.
 
-sources = [[i, 0, 1.5] for i in np.linspace(2,4, 10)]
+    Args:
+        sources (list of lists): Coordinates of the sound sources.
+        mic_positions_list (list of lists): Coordinates of all microphones.
+        bright_zone_mics_index (list): Indices (0-based) of mics in the bright zone.
+        dark_zone_mics_index (list): Indices (0-based) of mics in the dark zone.
+        fs_target (int): Target sample rate for the simulation (Hz).
+        room_dim (list): [L, W, H] dimensions of the room.
+        absorption (float): Wall absorption coefficient.
+        max_order (int): Maximum reflections to compute.
+        cardioid_mics_indices (list, optional): Indices of microphones that should
+                                                have a cardioid pattern. Defaults to None (all omni).
+        cardioid_orientations (list of np.ndarray, optional): A list of 
+                                                [yaw, pitch, roll] orientations (in radians) 
+                                                for each cardioid microphone. Must match 
+                                                the length and order of cardioid_mics_indices.
 
-for s in sources:
-    room.add_source(s)
+    Returns:
+        tuple: (room, IR, mic_positions, sources_list, mic_directivities, M_b, M_d, bright_zone_mics, dark_zone_mics)
+            room (pra.ShoeBox): The simulated room object.
+            IR (list): Room Impulse Responses in the format IR[mic_idx][src_idx].
+            mic_positions (np.ndarray): 3xN array of microphone coordinates.
+            sources_list (list): List of source coordinates (input).
+            mic_directivities (list): List of Directivity objects or None (for omni).
+            M_b (int): Number of bright zone microphones.
+            M_d (int): Number of dark zone microphones.
+            bright_zone_mics (list): Coordinates of bright zone mics.
+            dark_zone_mics (list): Coordinates of dark zone mics.
+    """
+    # --- Check Inputs and Define Zone Counts ---
+    sources_list = sources 
 
-# microphone grid (24 in bright zone, 24 in dark zone)
-mic_positions_list = []
-M_b = 0
-# left half (bright candidate)
-for x_m in np.linspace(0.5, 2.5, 6):
-    for y_m in np.linspace(0.5, 2.5, 4):
-        mic_positions_list.append([x_m, y_m, 1.5])
-        M_b = M_b + 1
+    # Define M_b and M_d based on the provided indices
+    M_b, M_d = len(bright_zone_mics_index), len(dark_zone_mics_index)
+    n_mics_total = len(mic_positions_list)
 
-M_d = 0
-# right half (dark candidate)
-for x_m in np.linspace(3.5, 5.5, 6):
-    for y_m in np.linspace(0.5, 2.5, 4):
-        mic_positions_list.append([x_m, y_m, 1.5])
-        M_d = M_d + 1
+    if n_mics_total != (M_b + M_d):
+        print(f"Warning: Total mics in list ({n_mics_total}) does not equal M_b + M_d ({M_b + M_d}). This may indicate a mapping error.")
 
-mic_positions = np.array(mic_positions_list).T
-room.add_microphone_array(pra.MicrophoneArray(mic_positions, room.fs))
+    # --- 2. Define Room ---
+    room = pra.ShoeBox(
+        room_dim,
+        fs=fs_target,
+        materials=pra.Material(absorption),
+        max_order=max_order,
+    )
 
-print("Room created. Computing RIRs (this may take a few seconds)...")
-t0 = time.perf_counter()
-room.compute_rir()
-print("RIRs computed in {:.2f} s".format(time.perf_counter() - t0))
+    # --- 3. Add Sources ---
+    for s in sources_list:
+        # Add sources to the room (default source directivity is isotropic/omnidirectional)
+        room.add_source(s)
 
-# Convert room.rir to a more convenient list: IR[mic_idx][src_idx] -> numpy array
-IR = room.rir
+    # --- 4. Define and Add Microphone Grid ---
+    # Convert list of coordinates to the required 3xN NumPy array format
+    mic_positions = np.array(mic_positions_list).T
+
+    # Create MicrophoneArray, passing the list of directivity objects
+    mic_array = pra.MicrophoneArray(
+        mic_positions,
+        room.fs)
+    room.add_microphone_array(mic_array)
+
+    # --- 5. Compute RIRs ---
+    print(f"Computing RIRs for {mic_positions.shape[1]} mics (Bright: {M_b}, Dark: {M_d}) and {len(sources_list)} sources...")
+    room.compute_rir()
+
+    # --- 6. Prepare Return Variables ---
+    # RIRs are stored in room.rir: room.rir[mic_index][source_index]
+    IR = room.rir 
+
+    # Extracting bright and dark zone mic coordinates for convenience
+    bright_zone_mics = [mic_positions_list[i] for i in bright_zone_mics_index]
+    dark_zone_mics = [mic_positions_list[i] for i in dark_zone_mics_index]
+
+    return room, IR, mic_positions, sources_list, M_b, M_d, bright_zone_mics, dark_zone_mics
+
+# --- Helper function to generate microphone grid ---
+
+def _generate_mic_grid(room_dim):
+    mic_positions_list = []
+    bright_indices = []
+    dark_indices = []
+
+    idx = 0
+    room_center_x = room_dim[0] / 2
+
+    # Left half (Bright zone)
+    for x_m in np.linspace(0.5, room_center_x - 0.5, 6):
+        for y_m in np.linspace(0.5, room_dim[1] - 0.5, 4):
+            mic_positions_list.append([x_m, y_m, 1.5])
+            bright_indices.append(idx)
+            idx += 1
+
+    # Right half (Dark zone)
+    for x_m in np.linspace(room_center_x + 0.5, room_dim[0] - 0.5, 6):
+        for y_m in np.linspace(0.5, room_dim[1] - 0.5, 4):
+            mic_positions_list.append([x_m, y_m, 1.5])
+            dark_indices.append(idx)
+            idx += 1
+
+    return mic_positions_list, bright_indices, dark_indices
+
+# --- Main Setup and Execution ---
+
+# Generate inputs
+demo_sources = [[i, 0, 1.5] for i in np.linspace(2, 4, 10)]
+demo_mic_list, bright_zone_mics_index, dark_zone_mics_index = _generate_mic_grid(room_dim)
+
+# --- Define Custom Directivity Parameters ---
+# Example: Make the first mic in the bright zone (index 0) and the first mic
+# in the dark zone (index 24) cardioid.
+
+# Index 0 (Bright zone mic) - Pointing towards the center (x=3)
+mic0_orientation = np.array([0, 0, 0]) # Yaw 0 (positive X-axis) if near x=0.5
+# If the room center is x=3, and mic is near x=0.5, pointing x=3 is positive X (Yaw=0)
+
+# Index 24 (Dark zone mic) - Pointing away from the center (x=3)
+mic24_orientation = np.array([np.pi, 0, 0]) # Yaw 180 degrees (negative X-axis)
+# If mic is near x=5.5, pointing away from center (x=3) is positive X (Yaw=0).
+# Let's assume it points towards the bright zone for suppression, so towards -X (Yaw=180 deg)
+
+demo_cardioid_indices = [0, 24]
+demo_cardioid_orientations = [mic0_orientation, mic24_orientation]
+
+# --- Call the parameterized function ---
+print("--- Setting up Acoustic Scenario ---")
+room, IR, mic_positions, sources, M_b, M_d, bright_zone_mics, dark_zone_mics = setup_acoustic_scenario( 
+    sources=demo_sources, 
+    mic_positions_list=demo_mic_list, 
+    bright_zone_mics_index=bright_zone_mics_index, 
+    dark_zone_mics_index=dark_zone_mics_index,
+    fs_target=fs_target)
+
 n_mics = mic_positions.shape[1]
 n_srcs = len(sources)
 
-# confirm RIR lengths and pad them to same length K
+# K is the maximum RIR length, which may vary slightly across mics/sources due to floating point math
 K = max(len(IR[m][s]) for m in range(n_mics) for s in range(n_srcs))
-print("Max RIR length K =", K)
-
-# Pad all RIRs to the maximum length K
-for m in range(n_mics):
-    for s in range(n_srcs):
-        if len(IR[m][s]) < K:
-            IR[m][s] = np.pad(IR[m][s], (0, K - len(IR[m][s])), mode='constant')
-
-# define bright & dark mic indices using actual x coordinate
-mic_array = mic_positions.T
-bright_zone_mics = [i for i,p in enumerate(mic_array) if p[0] < room_dim[0]/2]   # left half (x < 3.0)
-dark_zone_mics   = [i for i,p in enumerate(mic_array) if p[0] >= room_dim[0]/2]  # right half (x >= 3.0)
-print("Bright mics:", len(bright_zone_mics), "Dark mics:", len(dark_zone_mics))
-
+print(f"Max RIR length K = {K}")
 
 def build_HB_time_series(IR, bright_mics, N):
     """
@@ -210,13 +297,11 @@ def compute_rB_sigma2(bright_mics, x, IR, d_B, N, J):
     return r_B, sigma_d_sq
 
 
-
-
 print("Building R_B (bright) and R_D (dark). This may take some time...")
 
 tstart = time.perf_counter()
-R_B = build_R_from_micset(bright_zone_mics, x, IR, N, J)
-R_D = build_R_from_micset(dark_zone_mics, x, IR, N, J)
+R_B = build_R_from_micset(bright_zone_mics_index, x, IR, N, J)
+R_D = build_R_from_micset(dark_zone_mics_index, x, IR, N, J)
 print("Built R_B and R_D in {:.2f} s".format(time.perf_counter() - tstart))
 
 print("R_B trace:", np.trace(R_B), "R_D trace:", np.trace(R_D))
@@ -230,11 +315,11 @@ idx = np.argsort(-lambda_vals.real)
 lambda_vals = lambda_vals.real[idx]
 U = U[:, idx]
 
-H_B = build_HB_time_series(IR, bright_zone_mics, N)
+H_B = build_HB_time_series(IR, bright_zone_mics_index, N)
 
 d_B = np.ones((N, len(bright_zone_mics)))*0.3536
 
-r_B, sigma_d_sq = compute_rB_sigma2(bright_zone_mics, x, IR, d_B, N, J)
+r_B, sigma_d_sq = compute_rB_sigma2(bright_zone_mics_index, x, IR, d_B, N, J)
 
 q_vec = compute_q_vast(V, mu, lambda_vals, U, r_B)
 
